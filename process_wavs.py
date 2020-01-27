@@ -15,7 +15,7 @@ def process_wav(wavpath):
     channels = 1
     #sampling_rate = 16000
     delay = 3
-    iterations = 3
+    iterations = 20
     taps = 15
     #alpha=0.9999
     stft_options = dict(size=512, shift=160)
@@ -40,13 +40,13 @@ def process_wav(wavpath):
     x = istft(X.reshape(X.shape[0], X.shape[1]),
         size=stft_options['size'], shift=stft_options['shift'])
     dirsplit = os.path.split(wavpath)
-    output_dir = os.path.join('nara_wpe',dirsplit[0])
+    output_dir = os.path.join('nara_wpe_orig',dirsplit[0])
     os.makedirs(output_dir, exist_ok=True)
     sf.write(os.path.join(output_dir,dirsplit[1]), x, sr)
     return np.size(x)/sr
 
 
-wav_main_paths = ['sid_dev_short', 'sid_eval_short']
+wav_main_paths = ['sid_dev', 'sid_eval']
 
 # make filenamelist
 src_wavpaths = {}
