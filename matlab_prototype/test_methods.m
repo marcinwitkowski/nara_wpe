@@ -1,9 +1,20 @@
 clearvars; close all;
-% Load multichannel audio
+
 Nmic = 4;
+
+% Load multichannel audio
 for i=1:Nmic
-    [x(:,i),fs] = audioread(['../data/AMI_WSJ20-Array1-' num2str(i) '_T10c0201.wav']);
+    [x1(:,i),fs] = audioread(['../data/AMI_WSJ20-Array1-' num2str(i) '_T10c0201.wav']);
 end
+
+% Simulate multichannel audio
+x2_clean = audioread('../data/DR3_FEME0_SX335.WAV'); % from TIMIT
+load('../data/sim_4ch_ir.mat','h');
+x2 = fftfilt(h.entire(:,1:Nmic), x2_clean);
+x2_dir = fftfilt(h.direct(:,1:Nmic), x2_clean);
+
+% Choose signal
+x = x2;
 
 cfgs = struct();
 cfgs.fs = fs;                           % sampling rate  
@@ -43,3 +54,8 @@ for i = 1:size(Y,3)
     plot_normalised_spectrum(squeeze(Y(:,:,i)).', i, f_vec, t_vec); title(titles(i));
 end
 
+%% Calculate metrics 
+[pesq_ref, cd_ref, fwsegsnr_ref, srmr_ref] = calculate_metrics(x2(:,1), x2_dir(:,1),fs);
+[pesq(1), cd(1), fwsegsnr(1), srmr(1)] = calculate_metrics(y1(:,1), x2_dir(:,1),fs);
+[pesq(2), cd(2), fwsegsnr(2), srmr(2)] = calculate_metrics(y2(:,1), x2_dir(:,1),fs);
+[pesq(3), cd(3), fwsegsnr(3), srmr(3)] = calculate_metrics(y3(:,1), x2_dir(:,1),fs);
