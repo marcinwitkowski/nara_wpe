@@ -16,3 +16,4 @@ x=[4,3,5,7],[2,3,4,5],[2,5,6,7],[1,2,3,4]
 #plt.plot(output)
 #plt.show()
 cepsdist(data, data2)
+
