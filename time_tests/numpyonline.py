@@ -21,7 +21,8 @@ channels = 4
 sampling_rate = 16000
 delay = 3
 alpha=0.9999
-taps = 10
+taps = 12
+taps2 = [a for a in range(1,11)] + [a for a in range(11,21) if a % 2 == 0]
 frequency_bins = stft_options['size'] // 2 + 1
 file_template = 'AMI_WSJ20-Array1-{}_T10c0201.wav'
 signal_list = [
@@ -32,28 +33,29 @@ y = np.stack(signal_list, axis=0)
 IPython.display.Audio(y[0], rate=sampling_rate)
 Y = stft(y, **stft_options).transpose(1, 2, 0)
 T, _, _ = Y.shape
-
-def aquire_framebuffer():
-    buffer = list(Y[:taps+delay+1, :, :])
-    for t in range(taps+delay+1, T):
-        yield np.array(buffer)
-        buffer.append(Y[t, :, :])
-        buffer.pop(0)
-Z_list = []
-Q = np.stack([np.identity(channels * taps) for a in range(frequency_bins)])
-G = np.zeros((frequency_bins, channels * taps, channels))
-
-for Y_step in tqdm(aquire_framebuffer()):
-    Z, Q, G = online_wpe_step(
-        Y_step,
-        get_power_online(Y_step.transpose(1, 2, 0)),
-        Q,
-        G,
-        alpha=alpha,
-        taps=taps,
-        delay=delay
-    )
-    Z_list.append(Z)
+for i in range(len(taps2)):
+    print("\n{} Taps: ".format(taps2[i]))
+    def aquire_framebuffer():
+        buffer = list(Y[:taps2[i]+delay+1, :, :])
+        for t in range(taps2[i]+delay+1, T):
+            yield np.array(buffer)
+            buffer.append(Y[t, :, :])
+            buffer.pop(0)
+    Z_list = []
+    Q = np.stack([np.identity(channels * taps2[i]) for a in range(frequency_bins)])
+    G = np.zeros((frequency_bins, channels * taps2[i], channels))
+    
+    for Y_step in tqdm(aquire_framebuffer()):
+        Z, Q, G = online_wpe_step(
+            Y_step,
+            get_power_online(Y_step.transpose(1, 2, 0)),
+            Q,
+            G,
+            alpha=alpha,
+            taps=taps2[i],
+            delay=delay
+        )
+        Z_list.append(Z)
 
 Z_stacked = np.stack(Z_list)
 z = istft(np.asarray(Z_stacked).transpose(2, 0, 1), size=stft_options['size'], shift=stft_options['shift'])

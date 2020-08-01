@@ -34,7 +34,8 @@ channels = 4
 sampling_rate = 16000
 delay = 3
 iterations = 10
-taps = 5
+taps = 4
+taps2 = [a for a in range(1,11)] + [a for a in range(11,21) if a % 2 == 0]
 file_template = 'AMI_WSJ20-Array1-{}_T10c0201.wav'
 signal_list = [
     sf.read(str(project_root / 'data' / file_template.format(d + 1)))[0]
@@ -44,12 +45,14 @@ y = np.stack(signal_list, axis=0)
 IPython.display.Audio(y[0], rate=sampling_rate)
 Y = stft(y, **stft_options).transpose(2, 0, 1)
 from nara_wpe.tf_wpe import get_power
-with tf.Session()as session:
-    Y_tf = tf.placeholder(tf.complex128, shape=(None, None, None))
-    Z_tf = wpe(Y_tf, taps=taps, iterations=iterations)
-    start = timer()
-    Z = session.run(Z_tf, {Y_tf: Y})
-    end = timer()
+for i in range(len(taps2)):
+    with tf.Session()as session:
+        Y_tf = tf.placeholder(tf.complex128, shape=(None, None, None))
+        Z_tf = wpe(Y_tf, taps=taps2[i], iterations=iterations)
+        start = timer()
+        Z = session.run(Z_tf, {Y_tf: Y})
+        end = timer()
+        print("Taps = {}, Time = {}".format(taps2[i], end - start))
 z = istft(Z.transpose(1, 2, 0), size=stft_options['size'], shift=stft_options['shift'])
 print(end - start)
 IPython.display.Audio(z[0], rate=sampling_rate)
