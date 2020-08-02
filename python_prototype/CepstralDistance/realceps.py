@@ -1,5 +1,5 @@
-# Prototype implementation of evaluation functions
-# made according to their matlab version
+#Calculation of Cepstral Distance, written and tested according to matlab implementation
+# assumption: input is horizontal, x and y are one dimensional
 import math
 import numpy as np
 
