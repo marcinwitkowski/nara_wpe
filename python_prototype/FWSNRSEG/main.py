@@ -1,11 +1,9 @@
-import numpy as np
-from scipy.io.wavfile import read, write
+
 from fwsegsnr import fwsegsnr
+import soundfile as sf
 
+data, Fs = sf.read('speech.wav')
+data2, Fs2 = sf.read('speech_bab_0dB.wav')
 
-Fs, data = read('test.wav')
-data=np.array(data)
-data=np.transpose(data)
-
-#fwsegsnr(data, data2, Fs)
+print(fwsegsnr(data, data2, Fs))
 
