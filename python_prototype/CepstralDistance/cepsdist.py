@@ -1,11 +1,12 @@
+#Calculation of Cepstral Distance, written and tested according to matlab implementation
+# assumption: input is horizontal, x and y are one dimensional
+
 from math import sqrt
 from realceps import realceps
 import numpy as np
+import numpy.matlib
 
-
-# assumption: input is horizontal
-
-def cepsdist(x, y, fs=4800):
+def cepsdist(x, y, fs):
     # param values:
     param_cmn = "y"
     param_frame = 0.025
@@ -27,45 +28,44 @@ def cepsdist(x, y, fs=4800):
 
     frame = np.fix(param_frame * fs)
     shift = np.fix(param_shift * fs)
-
     num_sample = len(x)
     num_frame = np.fix((num_sample - frame + shift) / shift)
 
     # Break up the signals into frames
-    #Not sure how to make windowing, now this part is omitted, but has to be implemented
+    # Not sure how to make windowing, now this part is omitted, but has to be implemented
     win = np.hanning(frame)
-    # X=x
-    # Y=y
+
+    idx = numpy.matlib.repmat(np.vstack(range(1, int(frame + 1))), 1, int(num_frame)) + \
+          numpy.matlib.repmat(range(0, int(num_frame)) * shift, int(frame), 1)
+
+    idx=idx.astype(int)
+    x_idx=x[idx]
+    y_idx=y[idx]
+
+    X = x_idx*win[:,np.newaxis]
+    Y = y_idx*win[:,np.newaxis]
 
     # Apply the cepstrum analysis
-    x = np.vstack(x)  # vertical
-    y = np.vstack(y)
-    ceps_x = realceps(x)
-    ceps_y = realceps(y)
+    X = np.vstack(X)  # vertical
+    Y = np.vstack(Y)
+    ceps_x = realceps(X)
+    ceps_y = realceps(Y)
 
     param_order = 24  # default param in "score_sim"
 
-    ceps_x = ceps_x[1:param_order + 1]
-    ceps_y = ceps_y[1:param_order + 1]
+    ceps_x = ceps_x[0:param_order + 1]
+    ceps_y = ceps_y[0:param_order + 1]
 
     # Perform cepstral mean normalization
     if param_cmn == "y":
-        mean_ceps_x = np.mean(ceps_x, 0)
-        mean_ceps_y = np.mean(ceps_y, 0)
-        for i in range(len(ceps_x)):
-            ceps_x[i] = ceps_x[i] - mean_ceps_x
-            ceps_y[i] = ceps_y[i] - mean_ceps_y
+        mean_ceps_x = np.vstack(np.mean(ceps_x, 1))
+        mean_ceps_y = np.vstack(np.mean(ceps_y, 1))
+        ceps_x = ceps_x-mean_ceps_x
+        ceps_y = ceps_y - mean_ceps_y
 
     # Calculate the cepstral distances
-    err = np.empty(len(ceps_x))
-    for i in range(len(ceps_x)):
-        err[i] = (np.square((ceps_x[i] - ceps_y[i])))
-
-    errsum = np.sum(err[2: len(err)])
-
-    ds = np.empty(len(err))
-    for i in range(len(err)):
-        ds[i] = 10 / np.log(10) * np.sqrt(2 * errsum + err[i])
+    err = np.square(ceps_x - ceps_y)
+    ds = 10 / np.log(10) *np.sqrt((2 * np.sum(err[1: len(err)],axis=0))+np.hstack(err[0]))
 
     for i in range(len(ds)):  # min, max
         if ds[i] > 10:
@@ -75,3 +75,4 @@ def cepsdist(x, y, fs=4800):
 
     d = np.mean(ds)
     e = np.median(ds)
+    return [d, e]
