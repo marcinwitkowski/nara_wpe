@@ -565,7 +565,7 @@ def wpe_v6(Y, taps=10, delay=3, iterations=3, psd_context=0, statistics_mode='fu
     return X
 
 
-def wpe_v7(Y, taps=10, delay=3, iterations=3, psd_context=0, statistics_mode='full'):
+def wpe_v7(Y, taps=10, delay=3, iterations=3, psd_context=0, statistics_mode='full', param=0):
     """
     Batched and modular WPE version.
 
@@ -597,7 +597,7 @@ def wpe_v7(Y, taps=10, delay=3, iterations=3, psd_context=0, statistics_mode='fu
         raise ValueError(statistics_mode)
 
     for iteration in range(iterations):
-        inverse_power = get_power_inverse(X, psd_context=psd_context)
+        inverse_power = get_power_inverse(X, psd_context=psd_context, param=param)
         G = get_filter_matrix_v7(Y=Y[s], Y_tilde=Y_tilde[s], inverse_power=inverse_power[s])
         X = perform_filter_operation_v5(Y=Y, Y_tilde=Y_tilde, filter_matrix=G)
     return X
@@ -872,7 +872,7 @@ class OnlineWPE:
             self.buffer = update
 
 
-def abs_square(x):
+def abs_square(x, param=0):
     """
 
     Params:
@@ -895,10 +895,16 @@ def abs_square(x):
     """
 
     if np.iscomplexobj(x):
-        return x.real ** 2 + x.imag ** 2
+        if param == 0:    
+            return x.real ** 2 + x.imag ** 2
+        else:
+            print("ABS1")
+            return abs(x.real) ** (2-param) + abs(x.imag) ** (2-param)
     else:
-        return x ** 2
-
+        if param == 0:
+            return x ** 2
+        else:
+            return abs(x) ** (2-param)
 
 def window_mean_slow(x, lr_context):
     """
@@ -1090,7 +1096,7 @@ def _stable_positive_inverse(power):
     return inverse_power
 
 
-def get_power_inverse(signal, psd_context=0):
+def get_power_inverse(signal, psd_context=0, param=0):
     """
     Assumes single frequency bin with shape (D, T).
 
@@ -1106,7 +1112,7 @@ def get_power_inverse(signal, psd_context=0):
     >>> get_power_inverse(s * 0.)
     array([1., 1., 1., 1., 1.])
     """
-    power = np.mean(abs_square(signal), axis=-2)
+    power = np.mean(abs_square(signal, param), axis=-2)
 
     if np.isposinf(psd_context):
         power = np.broadcast_to(np.mean(power, axis=-1, keepdims=True), power.shape)
