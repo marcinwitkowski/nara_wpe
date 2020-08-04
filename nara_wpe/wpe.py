@@ -565,7 +565,7 @@ def wpe_v6(Y, taps=10, delay=3, iterations=3, psd_context=0, statistics_mode='fu
     return X
 
 
-def wpe_v7(Y, taps=10, delay=3, iterations=3, psd_context=0, statistics_mode='full', param=0):
+def wpe_v7(Y, taps=10, delay=3, iterations=3, psd_context=0, statistics_mode='full'):
     """
     Batched and modular WPE version.
 
@@ -597,12 +597,21 @@ def wpe_v7(Y, taps=10, delay=3, iterations=3, psd_context=0, statistics_mode='fu
         raise ValueError(statistics_mode)
 
     for iteration in range(iterations):
-        inverse_power = get_power_inverse(X, psd_context=psd_context, param=param)
+        inverse_power = get_power_inverse(X, psd_context=psd_context)
         G = get_filter_matrix_v7(Y=Y[s], Y_tilde=Y_tilde[s], inverse_power=inverse_power[s])
         X = perform_filter_operation_v5(Y=Y, Y_tilde=Y_tilde, filter_matrix=G)
     return X
 
-def wpe_v8(Y, taps=10, delay=3, iterations=3, psd_context=0, statistics_mode='full'):
+
+def wpe_v8(
+        Y,
+        taps=10,
+        delay=3,
+        iterations=3,
+        psd_context=0,
+        statistics_mode='full',
+        inplace=False
+):
     """
     Loopy Multiple Input Multiple Output Weighted Prediction Error [1, 2] implementation
     
@@ -624,6 +633,12 @@ def wpe_v8(Y, taps=10, delay=3, iterations=3, psd_context=0, statistics_mode='fu
             estimation of the correlation matrix and vector.
             'valid': Only calculate correlation matrix and vector on valid
             slices of the observation.
+        inplace: Whether to change Y inplace. Has only advantages, when Y has
+            independent axes, because the core WPE algorithm does not support
+            an inplace modification of the observation.
+            This option may be relevant, when Y is so large, that you do not
+            want to double the memory consumption (i.e. save Y and the
+            dereverberated signal in the memory).
 
     Returns:
         Estimated signal with the same shape as Y
@@ -637,7 +652,7 @@ def wpe_v8(Y, taps=10, delay=3, iterations=3, psd_context=0, statistics_mode='fu
     """
     ndim = Y.ndim
     if ndim == 2:
-        return wpe_v6(
+        out = wpe_v6(
             Y,
             taps=taps,
             delay=delay,
@@ -645,30 +660,25 @@ def wpe_v8(Y, taps=10, delay=3, iterations=3, psd_context=0, statistics_mode='fu
             psd_context=psd_context,
             statistics_mode=statistics_mode
         )
+        if inplace:
+            Y[...] = out
+        return out
     elif ndim >= 3:
-        shape = Y.shape
-        if ndim > 3:
-            Y = Y.reshape(np.prod(shape[:-2]), *shape[-2:])
+        if inplace:
+            out = Y
+        else:
+            out = np.empty_like(Y)
 
-        batch_axis = 0
-        F = Y.shape[batch_axis]
-        index = [slice(None)] * Y.ndim
-
-        out = []
-        for f in range(F):
-            index[batch_axis] = f
-            out.append(wpe_v6(
-                Y=Y[tuple(index)],
+        for index in np.ndindex(Y.shape[:-2]):
+            out[index] = wpe_v6(
+                Y=Y[index],
                 taps=taps,
                 delay=delay,
                 iterations=iterations,
                 psd_context=psd_context,
-                statistics_mode=statistics_mode
-            ))
-        if ndim > 3:
-            return np.stack(out, axis=batch_axis).reshape(shape)
-        else:
-            return np.stack(out, axis=batch_axis)
+                statistics_mode=statistics_mode,
+            )
+        return out
     else:
         raise NotImplementedError(
             'Input shape has to be (..., D, T) and not {}.'.format(Y.shape)
@@ -710,7 +720,7 @@ def online_wpe_step(
     nominator = np.einsum('fij,fj->fi', inv_cov, window)
     denominator = (alpha * power_estimate).astype(window.dtype)
     denominator += np.einsum('fi,fi->f', np.conjugate(window), nominator)
-    kalman_gain = nominator / denominator[:, None]
+    kalman_gain = nominator * _stable_positive_inverse(denominator)[:, None]
 
     inv_cov_k = inv_cov - np.einsum(
         'fj,fjm,fi->fim',
@@ -765,7 +775,6 @@ class OnlineWPE:
             (self.taps + self.delay + 1, frequency_bins, channel),
             dtype=np.complex128
         )
-        print(3)
 
     def step_frame(self, frame):
         """
@@ -845,7 +854,7 @@ class OnlineWPE:
         nominator = np.einsum('fij,fj->fi', self.inv_cov, window)
         denominator = (self.alpha * self.power).astype(window.dtype)
         denominator += np.einsum('fi,fi->f', np.conjugate(window), nominator)
-        self.kalman_gain = nominator / denominator[:, None]
+        self.kalman_gain = nominator * _stable_positive_inverse(denominator)[:, None]
 
     def _update_power_block(self):
         self.power = np.mean(
@@ -863,7 +872,7 @@ class OnlineWPE:
             self.buffer = update
 
 
-def abs_square(x, param=0):
+def abs_square(x):
     """
 
     Params:
@@ -886,16 +895,10 @@ def abs_square(x, param=0):
     """
 
     if np.iscomplexobj(x):
-        if param == 0:    
-            return x.real ** 2 + x.imag ** 2
-        else:
-            print("ABS")
-            return abs(x.real) ** (2-param) + abs(x.imag) ** (2-param)
+        return x.real ** 2 + x.imag ** 2
     else:
-        if param == 0:
-            return x ** 2
-        else:
-            return abs(x) ** (2-param)
+        return x ** 2
+
 
 def window_mean_slow(x, lr_context):
     """
@@ -1069,7 +1072,25 @@ def get_power(signal, psd_context=0):
     return np.squeeze(power)
 
 
-def get_power_inverse(signal, psd_context=0, param=0):
+def _stable_positive_inverse(power):
+    """
+    Calculate the inverse of a positive value.
+    """
+    eps = 1e-10 * np.max(power)
+    if eps == 0:
+        # Special case when signal is zero.
+        # Does not happen on real data.
+        # This only happens in artificial cases, e.g. redacted signal parts,
+        # where the signal is set to be zero from a human.
+        #
+        # The scale of the power does not matter, so take 1.
+        inverse_power = np.ones_like(power)
+    else:
+        inverse_power = 1 / np.maximum(power, eps)
+    return inverse_power
+
+
+def get_power_inverse(signal, psd_context=0):
     """
     Assumes single frequency bin with shape (D, T).
 
@@ -1082,8 +1103,10 @@ def get_power_inverse(signal, psd_context=0, param=0):
     array([ 1.6       ,  2.20408163,  7.08196721, 14.04421326, 19.51219512])
     >>> get_power_inverse(s, np.inf)
     array([3.41620801, 3.41620801, 3.41620801, 3.41620801, 3.41620801])
+    >>> get_power_inverse(s * 0.)
+    array([1., 1., 1., 1., 1.])
     """
-    power = np.mean(abs_square(signal,param), axis=-2)
+    power = np.mean(abs_square(signal), axis=-2)
 
     if np.isposinf(psd_context):
         power = np.broadcast_to(np.mean(power, axis=-1, keepdims=True), power.shape)
@@ -1099,9 +1122,7 @@ def get_power_inverse(signal, psd_context=0, param=0):
         pass
     else:
         raise ValueError(psd_context)
-    eps = 1e-10 * np.max(power)
-    inverse_power = 1 / np.maximum(power, eps)
-    return inverse_power
+    return _stable_positive_inverse(power)
 
 
 def get_Psi(Y, t, taps):
