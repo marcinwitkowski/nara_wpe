@@ -582,6 +582,7 @@ def wpe_v7(Y, taps=10, delay=3, iterations=3, psd_context=0, statistics_mode='fu
             estimation of the correlation matrix and vector.
             'valid': Only calculate correlation matrix and vector on valid
             slices of the observation.
+        param: WPE-CGG parameter, param = 0, ..., 2. If 0 then it is WPE
 
     Returns:
         Estimated signal with the same shape as Y
@@ -898,12 +899,13 @@ def abs_square(x, param=0):
         if param == 0:    
             return x.real ** 2 + x.imag ** 2
         else:
-            print("ABS1")
+            assert(param <= 2)
             return abs(x.real) ** (2-param) + abs(x.imag) ** (2-param)
     else:
         if param == 0:
             return x ** 2
         else:
+            assert(param <= 2)
             return abs(x) ** (2-param)
 
 def window_mean_slow(x, lr_context):
